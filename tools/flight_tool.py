@@ -414,6 +414,103 @@ def parse_route(query: str):
 
 
 # =========================================================
+# Destination name (used by the frontend background)
+# =========================================================
+
+# "jaipur" -> "Jaipur", built once from the airport database
+_AIRPORT_CITIES = {}
+for _airport in AIRPORTS.values():
+    _city = str(_airport.get("city", "")).strip()
+    if _city:
+        _AIRPORT_CITIES.setdefault(_city.lower(), _city)
+
+
+def _country_display_name(country_code: str) -> str:
+    """'IN' -> 'India', 'KR' -> 'South Korea'."""
+    country = pycountry.countries.get(alpha_2=country_code)
+    if not country:
+        return country_code
+    return getattr(country, "common_name", None) or country.name
+
+
+def _place_name(text: str):
+    """Turns a short piece of text like 'jaipur' or 'india' into a nice place name."""
+    cleaned = clean_text(text)
+    if not cleaned:
+        return None
+
+    # 1. Popular city we already know, e.g. "goa", "new york"
+    if cleaned in CITY_MAIN_AIRPORT:
+        return cleaned.title()
+
+    # 2. Exact country, e.g. "india", "usa"
+    if cleaned in COUNTRY_ALIASES:
+        return _country_display_name(COUNTRY_ALIASES[cleaned])
+    try:
+        return _country_display_name(pycountry.countries.lookup(cleaned).alpha_2)
+    except LookupError:
+        pass
+
+    # 3. Any city in the airport database, e.g. "udaipur"
+    if cleaned in _AIRPORT_CITIES:
+        return _AIRPORT_CITIES[cleaned]
+
+    # 4. An airport code, e.g. "jfk" -> "New York"
+    if re.fullmatch(r"[a-z]{3}", cleaned) and cleaned.upper() in AIRPORTS:
+        city = AIRPORTS[cleaned.upper()].get("city")
+        if city:
+            return city
+
+    # 5. A known city or country somewhere inside the text (the earliest one wins)
+    mentions = find_location_mentions(cleaned)
+    if mentions:
+        first = min(mentions, key=lambda m: re.search(rf"\b{re.escape(m)}\b", cleaned).start())
+        return _place_name(first) if first != cleaned else first.title()
+
+    return None
+
+
+def detect_destination(query: str):
+    """
+    Finds where the user wants to GO (not where they leave from).
+    Examples: 'Plan a 5-day trip to Jaipur' -> 'Jaipur'
+              'from USA to India for 7 days' -> 'India'
+              'Japan trip for 7 days'        -> 'Japan'
+    Returns None if no place is found.
+    """
+    q_lower = query.strip().lower()
+    if not q_lower:
+        return None
+
+    # Two airport codes, e.g. "LHR to CDG" (same rule as parse_route): the second one is the destination
+    codes = [c for c in re.findall(r"\b[A-Z]{3}\b", query) if c in AIRPORTS]
+    if len(codes) >= 2 and AIRPORTS[codes[1]].get("city"):
+        return AIRPORTS[codes[1]]["city"]
+
+    candidates = []
+
+    # "to Y" (and drop any "from X" that comes after it)
+    match = re.search(rf"\bto\s+(.+?){_END}", q_lower)
+    if match:
+        candidates.append(re.split(r"\bfrom\b", match.group(1))[0])
+
+    # "Japan trip from India" -> the part before "from"
+    match = re.search(r"^(.*?)\bfrom\b", q_lower)
+    if match:
+        candidates.append(match.group(1))
+
+    # Otherwise, the whole text, minus any "from X" part (that's the origin, not the destination)
+    candidates.append(re.sub(r"\bfrom\s+.+?(?=\bto\b|$)", " ", q_lower))
+
+    for text in candidates:
+        name = _place_name(text)
+        if name:
+            return name
+
+    return None
+
+
+# =========================================================
 # Formatting + API call
 # =========================================================
 
