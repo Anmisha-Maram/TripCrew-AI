@@ -1,1 +1,1 @@
-Multi-agent AI travel planner built with LangGraph and MCP. A supervisor agent coordinates flight, hotel, weather, budget and itinerary agents, input guardrails block off-topic requests, and a human-in-the-loop step lets you approve or revise the plan. FastAPI web UI, Groq LLM.
+Multi-agent AI travel planner built with LangGraph. A supervisor agent coordinates flight, hotel, budget and itinerary agents, input guardrails block off-topic requests, and a human-in-the-loop step lets you approve or revise the plan. FastAPI web UI, Groq LLM.
