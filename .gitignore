@@ -1,0 +1,9 @@
+# Secrets (API keys) - never commit
+.env
+
+# Python cache
+__pycache__/
+*.pyc
+
+# Editor settings
+.vscode/
